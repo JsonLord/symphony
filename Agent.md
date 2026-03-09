@@ -13,6 +13,9 @@ When a user defines a new project, an internal LLM analyzes the request and send
 
 While tasks across *different* repositories can run in parallel, tasks *within* a single repository must run sequentially. The system relies heavily on event-driven state transitions, using **n8n Webhooks** (triggered by emails or GitHub events) to verify when a task is finished and automatically enqueue the next one.
 
+**Dynamic Task Injection**
+Alongside the automated lifecycle, users have the ability to manually create and inject additional tasks into the workflow when fit. For example, if an error occurs during deployment or testing, a user (or automated monitor) can create an **"Error Report"** task. This task will retrieve the build/container logs (via the HF Space API), combine them with the failing job's context, and send the payload specifically to the **"Failure_Declaration"** Jules template to automatically generate a fix or diagnosis.
+
 **In‑app Integrations of Components**
 - **Frontend / UI**: A simple interface with a "Start New Project" button and a "Settings" tab. The settings tab will allow users to define project profiles and map parameter names that pull secrets securely from the Hugging Face Secret Vault.
 - **Organisation Agent (LLM)**: Intercepts the new project definition, sorts the requirements, and structures the payload for Plandex.
@@ -60,9 +63,9 @@ While tasks across *different* repositories can run in parallel, tasks *within* 
 - **Action**: Create the `/webhooks/n8n` endpoint. It will receive a payload containing the `github_repo_id` and `session_id`. The system must look up the active task, mark it complete, and trigger the Orchestrator to start the next task in the sequence.
 - **Test (E2E)**: Simulate a webhook POST request. Assert that the current task's state changes from `In Progress` to `Completed`, and that the next task in the sequence for that repo transitions to `In Progress`.
 
-**Task 7: Report Issue (Log Retrieval)**
-- **Action**: Implement the task to fetch SSE build/run logs from the Hugging Face Spaces API using `curl` logic natively in Python (e.g., `httpx` with stream support) and forward the text to the Jules API session.
-- **Test (Unit)**: Mock an SSE stream response simulating HF logs. Verify the service consumes the stream, buffers it appropriately, and constructs the correct payload for Jules.
+**Task 7: Report Issue (Log Retrieval) & Dynamic Task Injection**
+- **Action**: Implement the task to fetch SSE build/run logs from the Hugging Face Spaces API using `curl` logic natively in Python (e.g., `httpx` with stream support). Allow users to manually create this task to inject into the repository's lifecycle. The service must forward the logs and failing job context specifically to the **"Failure_Declaration"** Jules template via the Jules API.
+- **Test (Unit)**: Mock an SSE stream response simulating HF logs. Verify the service consumes the stream, buffers it appropriately, and correctly constructs the payload for the "Failure_Declaration" template before sending it to Jules.
 
 ---
 
@@ -72,7 +75,7 @@ While tasks across *different* repositories can run in parallel, tasks *within* 
 - The user can access a dashboard to click "Start New Project" and provide a high-level prompt.
 - The user can configure "Settings Profiles" where they specify project environments and link parameter names to secure Hugging Face vault secrets.
 - The user has visibility into the task queue, seeing exactly which repository is currently undergoing which phase (Codebase Adaptation, Deployment, API Test, Functionality Testing).
-- The user can trigger a "Report Issue" task manually or automatically via UI to extract logs and send them to the coding agent for debugging.
+- The user can manually create and inject additional tasks into a repository's queue when fit. For instance, they can trigger an "Error Report" task that automatically retrieves failing logs and sends them to the "Failure_Declaration" Jules template for immediate debugging and resolution.
 
 **Technical Perspective**
 - The system operates entirely hands-off regarding code creation; it strictly acts as a dispatcher and state manager.
@@ -148,14 +151,19 @@ While tasks across *different* repositories can run in parallel, tasks *within* 
 - **Response Schema**: `{ "acknowledged": true, "next_task_triggered": true }`
 - **Auth**: Requires a secure Webhook Secret token in headers to prevent spoofing.
 
-**5. `POST /api/v1/tasks/report-issue`**
-- **Description**: Triggers the system to fetch logs from a specific HF Space and send them to the Jules API for debugging.
+**5. `POST /api/v1/tasks/inject`**
+- **Description**: Allows a user or external monitor to inject a dynamic task into the sequential queue. Specifically supports an "error_report" task type that fetches logs and routes to the "Failure_Declaration" Jules template.
 - **Request Schema**:
   ```json
   {
-    "task_id": "uuid",
+    "repository_id": "owner/repo",
+    "task_type": "error_report",
     "profile_id": "uuid",
-    "space_id": "target-space-id"
+    "context": {
+      "space_id": "target-space-id",
+      "failing_job_name": "deployment-job",
+      "jules_template": "Failure_Declaration"
+    }
   }
   ```
-- **Response Schema**: `{ "status": "logs_retrieved_and_sent", "jules_session_id": "new-session" }`
+- **Response Schema**: `{ "task_id": "uuid", "status": "injected", "queue_position": 2 }`
