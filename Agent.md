@@ -17,8 +17,9 @@ While tasks across *different* repositories can run in parallel, tasks *within* 
 Alongside the automated lifecycle, users have the ability to manually create and inject additional tasks into the workflow when fit. For example, if an error occurs during deployment or testing, a user (or automated monitor) can create an **"Error Report"** task. This task will retrieve the build/container logs (via the HF Space API), combine them with the failing job's context, and send the payload specifically to the **"Failure_Declaration"** Jules template to automatically generate a fix or diagnosis.
 
 **In‑app Integrations of Components**
-- **Frontend / UI**: A simple interface with a "Start New Project" button and a "Settings" tab. The settings tab will allow users to define project profiles and map parameter names that pull secrets securely from the Hugging Face Secret Vault.
-- **Organisation Agent (LLM)**: Intercepts the new project definition, sorts the requirements, and structures the payload for Plandex.
+- **Frontend / UI**: A reactive Kanban interface (Vue 3 + Tailwind) featuring project management tasks. It includes a **Chat** tab for continuous interaction with the Plandex Ideation Agent, complete with a toggle to forward interactions to Telegram.
+- **Organisation Agent (LLM) & Stream Handler**: The system provides an `IdeationStreamHandler` (`/api/v1/stream`) to continuously stream interactions from the Plandex agent. It also intercepts new project definitions, sorts the requirements, and structures the payload.
+- **Telegram Integration**: When enabled in the UI, chat messages and agent responses are forwarded to a Telegram chat using the `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` Hugging Face space secrets.
 - **Plandex Integrator**: Communicates with the Plandex API (`/projects`, `/plans`, `/branches`, etc.) to generate and retrieve the breakdown of tasks.
 - **Task Orchestrator (State Machine)**: The core engine that receives tasks from Plandex, assigns them to repositories, and manages their sequential tags (Codebase Adaptation -> Deployment, etc.).
 - **Jules API Integrator**: Fills out Jules templates (via the JSON `variables` block format) based on the task parameters and sends them to the Jules API (`POST /sessions`) using the appropriate `X-Jules-Agent-Id`. It enforces the rule that APIs must be built, functionality tested via scripts, and Docs endpoints verified.
@@ -28,7 +29,7 @@ Alongside the automated lifecycle, users have the ability to manually create and
 **Proposed FASTAPI Setup**
 - **App Structure**:
   - `main.py`: Entry point, FastAPI initialization.
-  - `api/routers/`: Separate routers for `/projects`, `/tasks`, `/webhooks`, and `/settings`.
+  - `api/routers/`: Separate routers for `/projects`, `/tasks`, `/webhooks`, `/settings`, and `/stream`.
   - `services/`: Business logic encapsulating `plandex_service.py`, `jules_service.py`, `llm_service.py`, and `hf_vault_service.py`.
   - `models/`: SQLAlchemy ORM models (Project, Repository, Task, SettingsProfile) and Pydantic schemas for request/response validation.
   - `core/`: Configurations, dependency injection (DB sessions, HTTP client sessions), and security (API key verification).
@@ -67,12 +68,18 @@ Alongside the automated lifecycle, users have the ability to manually create and
 - **Action**: Implement the task to fetch SSE build/run logs from the Hugging Face Spaces API using `curl` logic natively in Python (e.g., `httpx` with stream support). Allow users to manually create this task to inject into the repository's lifecycle. The service must forward the logs and failing job context specifically to the **"Failure_Declaration"** Jules template via the Jules API.
 - **Test (Unit)**: Mock an SSE stream response simulating HF logs. Verify the service consumes the stream, buffers it appropriately, and correctly constructs the payload for the "Failure_Declaration" template before sending it to Jules.
 
+**Task 8: Ideation Stream & Telegram Forwarding**
+- **Action**: Implement the `IdeationStreamHandler` at `/api/v1/stream` returning a Server-Sent Events (SSE) stream. Include background tasks to forward messages to Telegram using the `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` secrets.
+- **Test (Unit)**: Test the `/stream` endpoint to ensure it returns a valid SSE stream and correctly queues background tasks for Telegram forwarding when the toggle is enabled.
+
 ---
 
 ## 3. Functionality Expectations
 
 **User Perspective**
 - The user can access a dashboard to click "Start New Project" and provide a high-level prompt.
+- The user can interact continuously with the Plandex Ideation Agent via a dedicated "Chat" tab.
+- The user can toggle Telegram forwarding in the chat tab to mirror the conversation to a configured Telegram channel.
 - The user can configure "Settings Profiles" where they specify project environments and link parameter names to secure Hugging Face vault secrets.
 - The user has visibility into the task queue, seeing exactly which repository is currently undergoing which phase (Codebase Adaptation, Deployment, API Test, Functionality Testing).
 - The user can manually create and inject additional tasks into a repository's queue when fit. For instance, they can trigger an "Error Report" task that automatically retrieves failing logs and sends them to the "Failure_Declaration" Jules template for immediate debugging and resolution.
@@ -151,7 +158,19 @@ Alongside the automated lifecycle, users have the ability to manually create and
 - **Response Schema**: `{ "acknowledged": true, "next_task_triggered": true }`
 - **Auth**: Requires a secure Webhook Secret token in headers to prevent spoofing.
 
-**5. `POST /api/v1/tasks/inject`**
+**5. `POST /api/v1/stream`**
+- **Description**: `IdeationStreamHandler` endpoint for continuous chat interaction with the Plandex agent. Returns a Server-Sent Events (SSE) stream and optionally forwards messages to Telegram.
+- **Request Schema**:
+  ```json
+  {
+    "message": "User's chat message",
+    "forward_to_telegram": true,
+    "project_id": "optional-uuid"
+  }
+  ```
+- **Response Schema**: `text/event-stream` stream containing `data: ...` chunks.
+
+**6. `POST /api/v1/tasks/inject`**
 - **Description**: Allows a user or external monitor to inject a dynamic task into the sequential queue. Specifically supports an "error_report" task type that fetches logs and routes to the "Failure_Declaration" Jules template.
 - **Request Schema**:
   ```json

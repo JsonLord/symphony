@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.core.database import Base, engine
-from app.api.routers import projects, settings, webhooks, tasks
+from app.api.routers import projects, settings, webhooks, tasks, stream
 import os
 
 # Create DB tables
@@ -20,6 +20,7 @@ app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"]
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
+app.include_router(stream.router, prefix="/api/v1/stream", tags=["stream"])
 
 @app.get("/health", tags=["health"])
 def health_check():

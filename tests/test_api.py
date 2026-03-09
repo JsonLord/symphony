@@ -74,3 +74,16 @@ def test_inject_task():
     data = response.json()
     assert data["status"] == "injected"
     assert "task_id" in data
+
+def test_ideation_stream():
+    # Use TestClient stream context manager
+    with client.stream("POST", "/api/v1/stream", json={"message": "Hello test", "forward_to_telegram": False}) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers["content-type"]
+
+        content = ""
+        for line in response.iter_lines():
+            content += line + "\n"
+
+        assert "data: I" in content
+        assert "event: end" in content
