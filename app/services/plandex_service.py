@@ -4,9 +4,10 @@ from app.core.config import settings
 def create_project(title: str):
     url = f"{settings.PLANDEX_API_URL}/projects"
     # Basic attempt to create a project via Plandex API.
-    # We will log errors if the space is down, and fallback.
+    # We will log errors if auth fails or the space is down, and fallback.
+    headers = {"Authorization": f"Bearer {settings.HF_TOKEN}"} if settings.HF_TOKEN else {}
     try:
-        res = httpx.post(url, json={"name": title}, timeout=5.0)
+        res = httpx.post(url, json={"name": title}, headers=headers, timeout=5.0)
         res.raise_for_status()
         return res.json().get("id", "fallback-id")
     except Exception as e:
@@ -20,9 +21,10 @@ def generate_plan(project_data: dict):
     project_id = create_project(title)
 
     url = f"{settings.PLANDEX_API_URL}/projects/{project_id}/plans"
+    headers = {"Authorization": f"Bearer {settings.HF_TOKEN}"} if settings.HF_TOKEN else {}
 
     try:
-        res = httpx.post(url, json={"title": title, "prompt": f"Break down {title} into standard pipeline tasks."}, timeout=5.0)
+        res = httpx.post(url, json={"title": title, "prompt": f"Break down {title} into standard pipeline tasks."}, headers=headers, timeout=5.0)
         res.raise_for_status()
         # Assume plandex returns some structured list or we map it to our tags
         # Given lack of exact Plandex response schema knowledge, we return our

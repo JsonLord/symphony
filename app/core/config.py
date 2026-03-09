@@ -4,7 +4,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./symphony.db"
     HF_TOKEN: str = ""
     JULES_API_URL: str = "https://harvesthealth-chat-app.hf.space"
-    PLANDEX_API_URL: str = "https://auxteam-plandex.hf.space/api/v1"
+    PLANDEX_API_URL: str = "https://auxteam-plandex.hf.space"
 
     model_config = SettingsConfigDict(env_file=".env")
 

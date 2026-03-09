@@ -34,8 +34,40 @@ def inject_task(request: schemas.TaskInjectRequest, db: Session = Depends(get_db
 
     return {"task_id": db_task.id, "status": "injected", "queue_position": priority_pos}
 
+import httpx
+from app.core.config import settings
+
 @router.post("/report-issue", response_model=schemas.ReportIssueResponse)
 def report_issue(request: schemas.ReportIssueRequest, db: Session = Depends(get_db)):
-    # Mock log retrieval and jules submission
-    session_id = jules_service.create_session(request.profile_id, {"logs": "Mock logs..."})
+    # Fetch actual build logs via HF API
+    # The URL matches the requested structure: https://huggingface.co/api/spaces/{profile_id}/{space_id}/logs/build
+    # or /logs/run. We'll attempt fetching build logs first.
+
+    url = f"https://huggingface.co/api/spaces/{request.profile_id}/{request.space_id}/logs/build"
+    headers = {"Authorization": f"Bearer {settings.HF_TOKEN}"} if settings.HF_TOKEN else {}
+
+    log_content = "Failed to retrieve logs"
+
+    try:
+        # Since it's an SSE stream, we can stream the text out up to a reasonable limit
+        with httpx.stream("GET", url, headers=headers) as response:
+            if response.status_code == 200:
+                lines = []
+                for idx, line in enumerate(response.iter_lines()):
+                    lines.append(line)
+                    if idx > 100: # Limit to 100 lines for the prompt context
+                        break
+                log_content = "\n".join(lines)
+            else:
+                log_content = f"HF API responded with status {response.status_code}"
+    except Exception as e:
+        log_content = f"Exception fetching logs: {str(e)}"
+
+    context = {
+        "task": f"Analyze Failure for {request.space_id}",
+        "logs": log_content,
+        "repository_id": "JsonLord/agent-notes" # using requested test repo
+    }
+
+    session_id = jules_service.create_session(request.profile_id, context)
     return {"status": "logs_retrieved_and_sent", "jules_session_id": session_id}
