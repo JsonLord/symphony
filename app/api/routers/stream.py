@@ -26,43 +26,43 @@ async def forward_to_telegram(message: str, sender: str = "User"):
     except Exception as e:
         print(f"Failed to forward message to Telegram: {e}")
 
-async def mock_plandex_stream(user_message: str):
-    # This simulates a continuous stream response from the Plandex agent.
-    # We yield parts of the sentence progressively.
-
-    response_words = [
-        "I", " am", " analyzing", " your", " request", " for", " project", " ideation.",
-        "\n\nBased", " on", " your", " message: ", f"\"{user_message}\"", ",",
-        " I", " will", " begin", " breaking", " this", " down", " into", " sequential", " tasks.",
-        "\n\nWould", " you", " like", " to", " proceed", " with", " creating", " the", " GitHub", " repositories?"
-    ]
-
-    full_response = ""
-    for word in response_words:
-        await asyncio.sleep(0.1) # Simulate generation delay
-        full_response += word
-        yield f"data: {word}\n\n"
-
-    yield "event: end\ndata: \n\n"
-
 @router.post("")
 async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMessageRequest, background_tasks: BackgroundTasks):
-
     if body.forward_to_telegram:
         background_tasks.add_task(forward_to_telegram, body.message, "User")
 
     async def event_generator():
         full_response = ""
+        plan_id = body.project_id if body.project_id else "default-plan"
+        branch_name = "main"
+        url = f"{settings.PLANDEX_API_URL}/plans/{plan_id}/{branch_name}/tell"
+
+        # From testing, the plandex API requires the token via Authorization.
+        headers = {"Authorization": f"Bearer {settings.AUTHENTICATION_TOKEN}"} if settings.AUTHENTICATION_TOKEN else {}
+
         try:
-            # Note: In a real implementation, we would forward the request to Plandex's streaming API
-            # For example: `httpx.stream("POST", f"{settings.PLANDEX_API_URL}/plans/{id}/{branch}/tell")`
-            # For this MVP, we yield a mock stream
-            async for chunk in mock_plandex_stream(body.message):
-                if chunk.startswith("data: "):
-                    full_response += chunk[6:].strip("\n")
-                yield chunk
+            async with httpx.AsyncClient() as client:
+                # Based on standard Plandex endpoints, we send the prompt to the tell endpoint
+                async with client.stream("POST", url, headers=headers, json={"prompt": body.message}, timeout=30.0) as response:
+                    if response.status_code != 200:
+                        error_msg = f"Plandex streaming failed with status {response.status_code}"
+                        yield f"data: {error_msg}\n\n"
+                        yield "event: end\ndata: \n\n"
+                        return
+
+                    async for chunk in response.aiter_lines():
+                        if chunk:
+                            # Forward the raw SSE chunks
+                            yield chunk + "\n\n"
+                            if chunk.startswith("data: "):
+                                full_response += chunk[6:]
+                    yield "event: end\ndata: \n\n"
+        except Exception as e:
+            error_msg = f"Connection error to Plandex API: {e}"
+            yield f"data: {error_msg}\n\n"
+            yield "event: end\ndata: \n\n"
         finally:
-            if body.forward_to_telegram:
+            if body.forward_to_telegram and full_response:
                 # Forward the completed assistant response to telegram
                 background_tasks.add_task(forward_to_telegram, full_response, "Plandex Agent")
 

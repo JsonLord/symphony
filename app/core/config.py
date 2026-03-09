@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:////tmp/symphony.db"
     HF_TOKEN: str = ""
-    AUTHENTICATION_TOKEN: str = ""
+    AUTHENTICATION_TOKEN: str = "GTA5"
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
     JULES_API_URL: str = "https://harvesthealth-chat-app.hf.space"
