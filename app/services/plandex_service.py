@@ -5,7 +5,7 @@ def create_project(title: str):
     url = f"{settings.PLANDEX_API_URL}/projects"
     # Basic attempt to create a project via Plandex API.
     # We will log errors if auth fails or the space is down, and fallback.
-    headers = {"Authorization": f"Bearer {settings.HF_TOKEN}"} if settings.HF_TOKEN else {}
+    headers = {"Authorization": f"Bearer {settings.AUTHENTICATION_TOKEN}"} if settings.AUTHENTICATION_TOKEN else {}
     try:
         res = httpx.post(url, json={"name": title}, headers=headers, timeout=5.0)
         res.raise_for_status()
@@ -21,7 +21,7 @@ def generate_plan(project_data: dict):
     project_id = create_project(title)
 
     url = f"{settings.PLANDEX_API_URL}/projects/{project_id}/plans"
-    headers = {"Authorization": f"Bearer {settings.HF_TOKEN}"} if settings.HF_TOKEN else {}
+    headers = {"Authorization": f"Bearer {settings.AUTHENTICATION_TOKEN}"} if settings.AUTHENTICATION_TOKEN else {}
 
     try:
         res = httpx.post(url, json={"title": title, "prompt": f"Break down {title} into standard pipeline tasks."}, headers=headers, timeout=5.0)
