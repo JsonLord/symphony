@@ -18,7 +18,12 @@ def create_session(profile_id: str, context: dict):
 
     # Explicitly use the JsonLord/agent-notes main branch repo as requested for test scripts
     repo_name = context.get("repository_id", "JsonLord/agent-notes")
-    owner, repo = repo_name.split("/") if "/" in repo_name else ("JsonLord", "agent-notes")
+
+    if "/" in repo_name:
+        parts = repo_name.split("/", 1)
+        owner, repo = parts[0], parts[1]
+    else:
+        owner, repo = "JsonLord", "agent-notes"
 
     payload["sourceContext"] = {
         "githubRepo": {
