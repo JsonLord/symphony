@@ -6,9 +6,16 @@ from app.core.database import Base, engine
 from app.api.routers import projects, settings, webhooks, tasks, stream
 import os
 
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 # Create DB tables
+logger.info("Initializing database tables...")
 Base.metadata.create_all(bind=engine)
 
+logger.info("Starting FastAPI application...")
 app = FastAPI(
     title="Symphony Adaptation",
     description="Orchestrational AI Agent API",
@@ -24,6 +31,7 @@ app.include_router(stream.router, prefix="/api/v1/stream", tags=["stream"])
 
 @app.get("/health", tags=["health"])
 def health_check():
+    logger.info("Health check endpoint pinged.")
     return {"status": "ok"}
 
 # Ensure static folder exists

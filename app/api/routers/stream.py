@@ -4,12 +4,14 @@ import asyncio
 import httpx
 from app.models import stream_schemas
 from app.core.config import settings
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 async def forward_to_telegram(message: str, sender: str = "User"):
     if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
-        print("Telegram forwarding skipped: Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID secrets.")
+        logger.warning("Telegram forwarding skipped: Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID secrets.")
         return
 
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -20,14 +22,17 @@ async def forward_to_telegram(message: str, sender: str = "User"):
     }
 
     try:
+        logger.info(f"Forwarding message to Telegram as {sender}...")
         async with httpx.AsyncClient() as client:
             res = await client.post(url, json=payload, timeout=5.0)
             res.raise_for_status()
+        logger.info("Successfully forwarded to Telegram.")
     except Exception as e:
-        print(f"Failed to forward message to Telegram: {e}")
+        logger.error(f"Failed to forward message to Telegram: {e}")
 
 @router.post("")
 async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMessageRequest, background_tasks: BackgroundTasks):
+    logger.info(f"Received stream request. Forward to telegram: {body.forward_to_telegram}")
     if body.forward_to_telegram:
         background_tasks.add_task(forward_to_telegram, body.message, "User")
 
@@ -41,15 +46,18 @@ async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMes
         headers = {"Authorization": f"Bearer {settings.AUTHENTICATION_TOKEN}"} if settings.AUTHENTICATION_TOKEN else {}
 
         try:
+            logger.info(f"Opening SSE stream to Plandex at {url}")
             async with httpx.AsyncClient() as client:
                 # Based on standard Plandex endpoints, we send the prompt to the tell endpoint
                 async with client.stream("POST", url, headers=headers, json={"prompt": body.message}, timeout=30.0) as response:
                     if response.status_code != 200:
                         error_msg = f"Plandex streaming failed with status {response.status_code}"
+                        logger.error(error_msg)
                         yield f"data: {error_msg}\n\n"
                         yield "event: end\ndata: \n\n"
                         return
 
+                    logger.info("Plandex stream opened successfully. Relaying chunks...")
                     async for chunk in response.aiter_lines():
                         if chunk:
                             # Forward the raw SSE chunks
@@ -59,6 +67,7 @@ async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMes
                     yield "event: end\ndata: \n\n"
         except Exception as e:
             error_msg = f"Connection error to Plandex API: {e}"
+            logger.error(error_msg)
             yield f"data: {error_msg}\n\n"
             yield "event: end\ndata: \n\n"
         finally:

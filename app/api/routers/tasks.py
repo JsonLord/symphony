@@ -6,8 +6,13 @@ from app.services import jules_service
 
 router = APIRouter()
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 @router.post("/inject", response_model=schemas.TaskInjectResponse)
 def inject_task(request: schemas.TaskInjectRequest, db: Session = Depends(get_db)):
+    logger.info(f"Injecting task of type {request.task_type} into repo {request.repository_id}")
     # Find current max queue position for this repo
     last_task = db.query(domain.Task).filter(
         domain.Task.repository_id == request.repository_id
@@ -39,6 +44,7 @@ from app.core.config import settings
 
 @router.post("/report-issue", response_model=schemas.ReportIssueResponse)
 def report_issue(request: schemas.ReportIssueRequest, db: Session = Depends(get_db)):
+    logger.info(f"Report issue triggered for space {request.space_id} by profile {request.profile_id}")
     # Fetch actual build logs via HF API
     # The URL matches the requested structure: https://huggingface.co/api/spaces/{profile_id}/{space_id}/logs/build
     # or /logs/run. We'll attempt fetching build logs first.
@@ -61,8 +67,10 @@ def report_issue(request: schemas.ReportIssueRequest, db: Session = Depends(get_
             else:
                 log_content = f"HF API responded with status {response.status_code}"
     except Exception as e:
+        logger.error(f"Exception fetching logs: {str(e)}")
         log_content = f"Exception fetching logs: {str(e)}"
 
+    logger.info("Logs retrieved. Creating Jules session context.")
     context = {
         "task": f"Analyze Failure for {request.space_id}",
         "logs": log_content,

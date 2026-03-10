@@ -3,11 +3,15 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import schemas, domain
 from app.services import llm_service, plandex_service, orchestrator_service
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 @router.post("/", response_model=schemas.ProjectResponse)
 def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
+    logger.info(f"Creating new project: {project.title}")
     db_project = domain.Project(
         title=project.title,
         description=project.description,
@@ -19,9 +23,12 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
     db.refresh(db_project)
 
     # Process project
+    logger.info("Calling LLM sorting service...")
     llm_service.sort_project(project.title, project.description)
+    logger.info("Calling Plandex to generate project tasks...")
     tasks_data = plandex_service.generate_plan({"title": project.title})
 
+    logger.info(f"Received {len(tasks_data)} tasks from Plandex. Storing in database.")
     for i, t_data in enumerate(tasks_data):
         db_task = domain.Task(
             project_id=db_project.id,
@@ -35,15 +42,18 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
     # Trigger first tasks for each repo
     unique_repos = set(t["repository_id"] for t in tasks_data)
     for repo in unique_repos:
+        logger.info(f"Triggering initial orchestrator task for repository: {repo}")
         orchestrator_service.trigger_next_task(db, repo)
 
     db_project.status = "planning_complete"
     db.commit()
 
+    logger.info(f"Project {db_project.id} created successfully.")
     return {"project_id": db_project.id, "status": db_project.status}
 
 @router.get("/{project_id}/tasks", response_model=schemas.TaskListResponse)
 def get_project_tasks(project_id: str, db: Session = Depends(get_db)):
+    logger.info(f"Fetching tasks for project {project_id}")
     tasks = db.query(domain.Task).filter(domain.Task.project_id == project_id).all()
     return {"tasks": [
         {

@@ -1,9 +1,12 @@
 import httpx
+import logging
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 def create_session(profile_id: str, context: dict):
-    # This hits the Jules API proxy POST /sessions endpoint.
     url = f"{settings.JULES_API_URL}/api/jules/sessions"
+    logger.info(f"Preparing to create Jules session at {url} for profile {profile_id}")
 
     # We use a static prompt mapping unless Jules template variables are provided.
     prompt_text = f"Execute task {context.get('task')} for profile {profile_id}. Ensure APIs are in, write test scripts, and verify Docs endpoint."
@@ -16,22 +19,10 @@ def create_session(profile_id: str, context: dict):
         "prompt": prompt_text
     }
 
-    # Explicitly use the JsonLord/agent-notes main branch repo as requested for test scripts
     repo_name = context.get("repository_id", "JsonLord/agent-notes")
-
-    if "/" in repo_name:
-        parts = repo_name.split("/", 1)
-        owner, repo = parts[0], parts[1]
-    else:
-        owner, repo = "JsonLord", "agent-notes"
-
-    payload["sourceContext"] = {
-        "githubRepo": {
-            "owner": owner,
-            "repo": repo,
-            "defaultBranch": {"displayName": "main"}
-        }
-    }
+    # According to the exact docs: "Requires title, prompt, and sourceContext."
+    # The sourceContext string should point to the registered source name for the repo.
+    payload["sourceContext"] = f"sources/github/{repo_name}"
 
     headers = {
         "Content-Type": "application/json",
@@ -39,11 +30,14 @@ def create_session(profile_id: str, context: dict):
     }
 
     try:
+        logger.info(f"Sending payload to Jules API: {payload}")
         res = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        logger.info(f"Jules API create_session response status: {res.status_code}")
         res.raise_for_status()
         data = res.json()
-        return data.get("id", f"session-{profile_id}-{context.get('task')}")
+        session_id = data.get("id", f"session-{profile_id}-{context.get('task')}")
+        logger.info(f"Successfully created Jules session ID: {session_id}")
+        return session_id
     except Exception as e:
-        print(f"Jules API create_session failed: {e}")
-        # Return a fallback string for testing
+        logger.error(f"Jules API create_session failed: {e}")
         return f"fallback-session-{context.get('task')}"
