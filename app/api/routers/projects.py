@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import schemas, domain
-from app.services import llm_service, plandex_service, orchestrator_service
+from app.services import llm_service, plandex_service, orchestrator_service, kanboard_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,6 +12,11 @@ router = APIRouter()
 @router.post("/", response_model=schemas.ProjectResponse)
 def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
     logger.info(f"Creating new project: {project.title}")
+
+    # Sync project to external Kanboard
+    kanboard_res = kanboard_service.sync_project_to_kanboard(project.title, project.description)
+    kanboard_project_id = kanboard_res.get("project_id", 1) if kanboard_res else 1
+
     db_project = domain.Project(
         title=project.title,
         description=project.description,
@@ -37,6 +42,14 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
             queue_position=i
         )
         db.add(db_task)
+
+        # Sync generated tasks to Kanboard
+        kanboard_service.sync_task_to_kanboard(
+            project_id=str(kanboard_project_id),
+            title=f"{t_data['repository_id']} - {t_data['tag']}",
+            description=f"Auto-generated task from Plandex pipeline phase: {t_data['tag']}"
+        )
+
     db.commit()
 
     # Trigger first tasks for each repo

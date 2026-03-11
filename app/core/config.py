@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = ""
     JULES_API_URL: str = "https://harvesthealth-chat-app.hf.space"
     PLANDEX_API_URL: str = "https://auxteam-plandex.hf.space/api/v1"
+    KANBOARD_API_URL: str = "https://harvesthealth-kanboard.hf.space"
+    KANBOARD_USERNAME: str = ""
+    KANBOARD_PASSWORD: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 

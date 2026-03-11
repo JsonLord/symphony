@@ -21,6 +21,7 @@ Alongside the automated lifecycle, users have the ability to manually create and
 - **Organisation Agent (LLM) & Stream Handler**: The system provides an `IdeationStreamHandler` (`/api/v1/stream`) to continuously stream interactions from the Plandex agent. It also intercepts new project definitions, sorts the requirements, and structures the payload.
 - **Telegram Integration**: When enabled in the UI, chat messages and agent responses are forwarded to a Telegram chat using the `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` Hugging Face space secrets.
 - **Plandex Integrator**: Communicates with the Plandex API (`/projects`, `/plans`, `/branches`, etc.) to generate and retrieve the breakdown of tasks.
+- **Kanboard Sync Engine**: Automatically replicates created projects and Plandex-generated tasks to an external Kanboard instance hosted on Hugging Face Spaces via the configured `KANBOARD_API_URL`.
 - **Task Orchestrator (State Machine)**: The core engine that receives tasks from Plandex, assigns them to repositories, and manages their sequential tags (Codebase Adaptation -> Deployment, etc.).
 - **Jules API Integrator**: Fills out Jules templates (via the JSON `variables` block format) based on the task parameters and sends them to the Jules API (`POST /sessions`) using the appropriate `X-Jules-Agent-Id`. It enforces the rule that APIs must be built, functionality tested via scripts, and Docs endpoints verified.
 - **Webhook Handler**: An endpoint to receive signals from n8n (e.g., CI/CD or email updates) containing a GitHub repo ID and session ID, which triggers the Task Orchestrator to advance the task state.
@@ -48,9 +49,9 @@ Alongside the automated lifecycle, users have the ability to manually create and
 - **Action**: Implement the Settings tab backend logic to store profile definitions and their parameter mappings. Create a service that securely fetches values from the Hugging Face Secret Vault during runtime execution.
 - **Test (Unit)**: Mock the HF Secret Vault API response. Ensure the `hf_vault_service` correctly maps the stored parameter names to the mocked secret values without exposing them in plaintext logs.
 
-**Task 3: Project Ideation & Plandex Pipeline**
-- **Action**: Implement the "Start New Project" flow. This triggers the LLM sorting logic, sends the payload to the Plandex `/projects` and `/plans` endpoints, and parses the returned tasks into the local DB.
-- **Test (E2E/Integration)**: Mock the LLM output and the Plandex API responses. Assert that a single `POST /projects` request correctly populates the database with a structured list of Tasks assigned to dummy repositories.
+**Task 3: Project Ideation, Plandex Pipeline, and Kanboard Sync**
+- **Action**: Implement the "Start New Project" flow. This triggers the LLM sorting logic, sends the payload to the Plandex `/projects` and `/plans` endpoints, creates the equivalent Project in the external Kanboard API, parses the returned tasks into the local DB, and syncs those tasks to Kanboard.
+- **Test (E2E/Integration)**: Mock the LLM output, the Plandex API responses, and the Kanboard HTTP endpoints. Assert that a single `POST /projects` request correctly populates the database and dispatches the correct Kanboard HTTP calls.
 
 **Task 4: Task Orchestration & State Machine**
 - **Action**: Build the internal queueing logic. Ensure tasks for the same repository are executed strictly sequentially (Codebase Adaptation -> Deployment -> API Test -> Functionality Test), while tasks for different repos can be dispatched concurrently.
