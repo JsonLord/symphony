@@ -62,3 +62,71 @@ def sync_task_to_kanboard(project_id: str, title: str, description: str):
     except Exception as e:
         logger.error(f"Failed to sync task to Kanboard: {e}")
         return None
+
+def get_project_link(project_id: str):
+    if not settings.KANBOARD_API_URL:
+        return None
+
+    token = authenticate_kanboard()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    url = f"{settings.KANBOARD_API_URL}/api/projects/{project_id}"
+
+    try:
+        res = httpx.get(url, headers=headers, timeout=5.0)
+        res.raise_for_status()
+        return res.json().get("url")
+    except Exception as e:
+        logger.error(f"Failed to get project link: {e}")
+        return None
+
+def update_task(task_id: str, updates: dict):
+    if not settings.KANBOARD_API_URL:
+        return None
+
+    token = authenticate_kanboard()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    url = f"{settings.KANBOARD_API_URL}/api/tasks/{task_id}"
+
+    try:
+        res = httpx.put(url, params=updates, headers=headers, timeout=5.0)
+        res.raise_for_status()
+        logger.info(f"Successfully updated task {task_id}")
+        return res.json()
+    except Exception as e:
+        logger.error(f"Failed to update task {task_id}: {e}")
+        return None
+
+def delete_task(task_id: str):
+    if not settings.KANBOARD_API_URL:
+        return None
+
+    token = authenticate_kanboard()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    url = f"{settings.KANBOARD_API_URL}/api/tasks/{task_id}"
+
+    try:
+        res = httpx.delete(url, headers=headers, timeout=5.0)
+        res.raise_for_status()
+        logger.info(f"Successfully deleted task {task_id}")
+        return res.json()
+    except Exception as e:
+        logger.error(f"Failed to delete task {task_id}: {e}")
+        return None
+
+def create_user(username: str, password: str, email: str):
+    if not settings.KANBOARD_API_URL:
+        return None
+
+    token = authenticate_kanboard()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    url = f"{settings.KANBOARD_API_URL}/api/users"
+
+    try:
+        params = {"username": username, "password": password, "email": email}
+        res = httpx.post(url, params=params, headers=headers, timeout=5.0)
+        res.raise_for_status()
+        logger.info(f"Successfully requested Kanboard user creation for {username}")
+        return res.json()
+    except Exception as e:
+        logger.error(f"Failed to create Kanboard user {username}: {e}")
+        return None

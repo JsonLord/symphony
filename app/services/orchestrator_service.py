@@ -1,7 +1,7 @@
 import httpx
 from sqlalchemy.orm import Session
 from app.models.domain import Task
-from app.services import jules_service
+from app.services import jules_service, kanboard_service
 from app.core.config import settings
 
 def fetch_logs(space_id: str):
@@ -38,6 +38,12 @@ def trigger_next_task(db: Session, repository_id: str):
 
         context = {"task": next_task.tag, "repository_id": repository_id}
 
+        # Fetch the Kanboard project link for the Jules agent context
+        # (Assuming project ID 1 for scaffolding purposes, normally fetched from db_project)
+        kanboard_link = kanboard_service.get_project_link("1")
+        if kanboard_link:
+            context["task"] += f" (Kanboard Tracker: {kanboard_link})"
+
         # If it's an error report, we fetch logs and explicitly pass the requested template to Jules
         if next_task.task_type == "error_report" and next_task.context:
             space_id = next_task.context.get("space_id", "Unknown")
@@ -46,7 +52,7 @@ def trigger_next_task(db: Session, repository_id: str):
 
             logs = fetch_logs(space_id)
             context["logs"] = logs
-            context["task"] = f"Analyze {failing_job} error logs via {jules_template} template"
+            context["task"] = f"Analyze {failing_job} error logs via {jules_template} template. (Tracking on Kanboard: {kanboard_link})"
             context["template"] = jules_template
 
         # In a real app, this would use the profile linked to the project
