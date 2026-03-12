@@ -176,6 +176,10 @@
               if (data.username && data.password) {
                 // Construct a dynamic form that targets the iframe
                 // Using Kanboard's standard UI login controller path: /?controller=AuthController&action=check
+                // Note: The prompt asks to specifically load: https://harvesthealth-kanboard.hf.space/?controller=BoardViewController&action=show&project_id=1&search=status%3Aopen
+                // Since Kanboard auth form usually doesn't take a dynamic redirect easily without a valid session token first,
+                // we will POST the login, and then set the iframe src to the explicit board URL shortly after login succeeds.
+
                 const form = document.createElement('form');
                 form.target = kanboardFrame.value.name || 'kanboardFrame';
                 form.action = `${targetUrl}/?controller=AuthController&action=check`;
@@ -201,15 +205,23 @@
 
                 // Clean up the DOM
                 setTimeout(() => document.body.removeChild(form), 1000);
+
+                // After allowing time for the login POST to resolve and set the cookie, explicitly redirect the iframe
+                // to the requested project board URL to satisfy the user's requirement.
+                setTimeout(() => {
+                    const exactUrl = "https://harvesthealth-kanboard.hf.space/?controller=BoardViewController&action=show&project_id=1&search=status%3Aopen";
+                    if(kanboardFrame.value) kanboardFrame.value.src = exactUrl;
+                }, 1500);
+
               } else {
-                kanboardFrame.value.src = targetUrl || "https://harvesthealth-kanboard.hf.space";
+                kanboardFrame.value.src = targetUrl || "https://harvesthealth-kanboard.hf.space/?controller=BoardViewController&action=show&project_id=1&search=status%3Aopen";
               }
             } else {
-              kanboardFrame.value.src = "https://harvesthealth-kanboard.hf.space";
+              kanboardFrame.value.src = "https://harvesthealth-kanboard.hf.space/?controller=BoardViewController&action=show&project_id=1&search=status%3Aopen";
             }
           } catch(e) {
             console.error("Kanboard auto-login failed", e);
-            if(kanboardFrame.value) kanboardFrame.value.src = "https://harvesthealth-kanboard.hf.space";
+            if(kanboardFrame.value) kanboardFrame.value.src = "https://harvesthealth-kanboard.hf.space/?controller=BoardViewController&action=show&project_id=1&search=status%3Aopen";
           }
         };
 
