@@ -31,9 +31,16 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
     logger.info("Calling LLM sorting service...")
     llm_service.sort_project(project.title, project.description)
     logger.info("Calling Plandex to generate project tasks...")
-    tasks_data = plandex_service.generate_plan({"title": project.title})
+    plan_response = plandex_service.generate_plan({"title": project.title})
 
-    logger.info(f"Received {len(tasks_data)} tasks from Plandex. Storing in database.")
+    tasks_data = plan_response.get("tasks", [])
+    plandex_plan_id = plan_response.get("plandex_plan_id")
+
+    # Store the actual Plandex plan ID in the project so the stream endpoint can use it
+    db_project.plandex_plan_id = plandex_plan_id
+    db.commit()
+
+    logger.info(f"Received {len(tasks_data)} tasks from Plandex (Plan ID: {plandex_plan_id}). Storing in database.")
     for i, t_data in enumerate(tasks_data):
         db_task = domain.Task(
             project_id=db_project.id,

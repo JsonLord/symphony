@@ -13,6 +13,7 @@ class Project(Base):
     description = Column(String)
     profile_id = Column(String)
     status = Column(String, default="analyzing")
+    plandex_plan_id = Column(String, nullable=True)
     tasks = relationship("Task", back_populates="project")
 
 class Task(Base):

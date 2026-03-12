@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 import asyncio
 import httpx
-from app.models import stream_schemas
+from app.models import stream_schemas, domain
 from app.core.config import settings
+from app.core.database import get_db
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,14 +33,20 @@ async def forward_to_telegram(message: str, sender: str = "User"):
         logger.error(f"Failed to forward message to Telegram: {e}")
 
 @router.post("")
-async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMessageRequest, background_tasks: BackgroundTasks):
+async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMessageRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     logger.info(f"Received stream request. Forward to telegram: {body.forward_to_telegram}")
     if body.forward_to_telegram:
         background_tasks.add_task(forward_to_telegram, body.message, "User")
 
+    # Lookup the Plandex plan ID if a project ID is provided
+    plan_id = "default-plan-id"
+    if body.project_id:
+        db_proj = db.query(domain.Project).filter(domain.Project.id == body.project_id).first()
+        if db_proj and db_proj.plandex_plan_id:
+            plan_id = db_proj.plandex_plan_id
+
     async def event_generator():
         full_response = ""
-        plan_id = body.project_id if body.project_id else "default-plan"
         branch_name = "main"
         url = f"{settings.PLANDEX_API_URL}/plans/{plan_id}/{branch_name}/tell"
 
