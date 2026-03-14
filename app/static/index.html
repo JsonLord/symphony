@@ -42,47 +42,70 @@
 
     <!-- Secondary Header / Tabs -->
     <div class="header-bar px-4 py-2 flex items-center space-x-2">
-      <div class="tab" @click="activeTab = 'overview'" :class="{ active: activeTab === 'overview' }">Overview</div>
-      <div class="tab" @click="activeTab = 'updates'" :class="{ active: activeTab === 'updates' }">Updates</div>
-      <div class="tab flex items-center" @click="activeTab = 'issues'" :class="{ active: activeTab === 'issues' }">Internal Tasks <span class="ml-2 text-gray-400">+</span></div>
+      <div class="tab flex items-center" @click="activeTab = 'tasks'" :class="{ active: activeTab === 'tasks' }">Tasks</div>
       <div class="tab flex items-center text-blue-500" @click="activeTab = 'kanboard'" :class="{ active: activeTab === 'kanboard' }">Kanboard UI</div>
       <div class="tab flex items-center text-indigo-500" @click="activeTab = 'chat'" :class="{ active: activeTab === 'chat' }">Chat <span class="ml-2 text-gray-400">+</span></div>
     </div>
 
-    <!-- Kanban Board -->
-    <div v-show="activeTab === 'issues'" class="flex-1 overflow-x-auto p-6 flex space-x-6 items-start">
+    <!-- Tasks Tab (Creation UI + Kanban) -->
+    <div v-show="activeTab === 'tasks'" class="flex-1 flex flex-col overflow-hidden bg-gray-50">
 
-      <!-- Columns -->
-      <div class="column flex-shrink-0" v-for="col in columns" :key="col.id">
-        <div class="flex items-center justify-between mb-3 text-sm font-medium text-gray-700">
-          <div class="flex items-center">
-            <span class="status-dot" :class="col.iconClass"></span>
-            {{ col.title }} <span class="ml-2 text-gray-400 font-normal">{{ getTasks(col.id).length }}</span>
+      <!-- Creation UI -->
+      <div class="bg-white border-b px-6 py-4 flex-shrink-0 shadow-sm">
+        <h2 class="text-lg font-semibold text-gray-800 mb-3">Create New Project / Task</h2>
+        <div class="flex flex-col space-y-3 max-w-3xl">
+          <input type="text" v-model="newProjectTitle" placeholder="Project Title (e.g. New React Migration)" class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <textarea v-model="newProjectDescription" placeholder="Detailed prompt or description..." rows="2" class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+
+          <div class="flex items-center space-x-4">
+            <label class="cursor-pointer flex items-center px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium text-gray-700">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L28 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Attach Image Specification
+              <input type="file" class="hidden" accept="image/*" @change="onProjectImageSelected">
+            </label>
+            <span v-if="projectImageBase64" class="text-sm text-green-600 flex items-center">
+              Image Attached ✓
+              <button @click="projectImageBase64 = null" class="ml-2 text-red-500 hover:text-red-700 text-xs underline">Remove</button>
+            </span>
+
+            <div class="flex-1"></div>
+            <button @click="submitNewProject" :disabled="isSubmittingProject || !newProjectTitle.trim()" class="bg-blue-600 text-white px-6 py-2 rounded shadow-sm hover:bg-blue-700 disabled:opacity-50 text-sm font-medium transition-colors">
+              {{ isSubmittingProject ? 'Creating...' : 'Launch Project' }}
+            </button>
           </div>
-          <div class="text-gray-400">... +</div>
         </div>
+      </div>
 
-        <!-- Task Cards -->
-        <div v-for="task in getTasks(col.id)" :key="task.id" class="card">
-          <div class="text-xs text-gray-400 mb-1 flex justify-between">
-            <span>{{ task.identifier }}</span>
-            <span class="status-dot" :class="col.iconClass" style="height: 10px; width: 10px; margin: 0;"></span>
+      <!-- Kanban Board -->
+      <div class="flex-1 overflow-x-auto p-6 flex space-x-6 items-start">
+        <!-- Columns -->
+        <div class="column flex-shrink-0" v-for="col in columns" :key="col.id">
+          <div class="flex items-center justify-between mb-3 text-sm font-medium text-gray-700">
+            <div class="flex items-center">
+              <span class="status-dot" :class="col.iconClass"></span>
+              {{ col.title }} <span class="ml-2 text-gray-400 font-normal">{{ getTasks(col.id).length }}</span>
+            </div>
+            <div class="text-gray-400">... +</div>
           </div>
-          <div class="font-medium text-gray-800 mb-2">{{ task.title }}</div>
-          <div class="text-xs text-gray-500 flex items-center mt-3">
-            <span v-if="task.jules_session_id" class="text-blue-500 mr-2">⚙️ Session Active</span>
-            <span v-else>Updated Mar 2</span>
+
+          <!-- Task Cards -->
+          <div v-for="task in getTasks(col.id)" :key="task.id" class="card relative group">
+            <div class="text-xs text-gray-400 mb-1 flex justify-between">
+              <span>{{ task.identifier }}</span>
+              <span class="status-dot" :class="col.iconClass" style="height: 10px; width: 10px; margin: 0;"></span>
+            </div>
+            <div class="font-medium text-gray-800 mb-2">{{ task.title }}</div>
+            <div class="text-xs text-gray-500 flex items-center mt-3">
+              <span v-if="task.jules_session_id" class="text-blue-500 mr-2">⚙️ Session Active</span>
+              <span v-else>Queued / Completed</span>
+            </div>
+          </div>
+
+          <!-- Error Inject Button (for Functionality Test column) -->
+          <div v-if="col.id === 'Functionality-Testing'" class="btn-create mt-2 text-red-500 border-red-200 hover:bg-red-50" @click="injectErrorTask()">
+            ⚠️ Inject Error Report Task
           </div>
         </div>
-
-        <!-- Create Button (for Todo column) -->
-        <div v-if="col.id === 'Codebase Adaptation'" class="btn-create mt-2" @click="createNewProject()">
-          + Start New Project
-        </div>
-        <div v-if="col.id === 'Functionality-Testing'" class="btn-create mt-2 text-red-500 border-red-200 hover:bg-red-50" @click="injectErrorTask()">
-          ⚠️ Inject Error Report Task
-        </div>
-
       </div>
     </div>
 
@@ -160,10 +183,16 @@
           { id: 'Functionality-Testing', title: 'Functionality Test', iconClass: 'status-review' }
         ];
 
-        const activeTab = ref('kanboard');
+        const activeTab = ref('tasks');
         const tasks = ref([]);
         const activeProjectId = ref(null);
         let taskCounter = 890;
+
+        // Creation UI Refs
+        const newProjectTitle = ref('');
+        const newProjectDescription = ref('');
+        const projectImageBase64 = ref(null);
+        const isSubmittingProject = ref(false);
 
         // Kanboard Refs
         const kanboardFrame = ref(null);
@@ -222,28 +251,18 @@
           }
         };
 
-        const createNewProject = async () => {
-          const title = prompt("Enter project title:", "New React Migration");
-          if (!title) return;
-
-          let imageBase64 = null;
-          const attachImage = confirm("Would you like to attach an image specification for OCR markdown parsing?");
-          if (attachImage) {
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = 'image/*';
-            fileInput.onchange = async (e) => {
-                const file = e.target.files[0];
-                if(file) imageBase64 = await fileToBase64(file);
-                submitProject(title, imageBase64);
-            };
-            fileInput.click();
-          } else {
-             submitProject(title, null);
+        const onProjectImageSelected = async (event) => {
+          const file = event.target.files[0];
+          if (file) {
+            projectImageBase64.value = await fileToBase64(file);
           }
         };
 
-        const submitProject = async (title, imageBase64) => {
+        const submitNewProject = async () => {
+            const title = newProjectTitle.value.trim();
+            if (!title) return;
+
+            isSubmittingProject.value = true;
             try {
               // Create Profile first
               const profRes = await fetch('/api/v1/settings/profiles', {
@@ -257,15 +276,30 @@
               const projRes = await fetch('/api/v1/projects/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, description: "Frontend adaptation", profile_id, image_base64: imageBase64 })
+                body: JSON.stringify({
+                  title: title,
+                  description: newProjectDescription.value.trim(),
+                  profile_id,
+                  image_base64: projectImageBase64.value
+                })
               });
+
+              if (!projRes.ok) throw new Error("Failed API response");
+
               const { project_id } = await projRes.json();
               activeProjectId.value = project_id;
+
+              // Clear form
+              newProjectTitle.value = '';
+              newProjectDescription.value = '';
+              projectImageBase64.value = null;
 
               await loadTasks();
             } catch (e) {
               console.error("Failed to create project", e);
-              alert("Error creating project.");
+              alert("Error creating project. Check console logs.");
+            } finally {
+              isSubmittingProject.value = false;
             }
         };
 
@@ -367,7 +401,12 @@
           columns,
           tasks,
           getTasks,
-          createNewProject,
+          newProjectTitle,
+          newProjectDescription,
+          projectImageBase64,
+          isSubmittingProject,
+          onProjectImageSelected,
+          submitNewProject,
           injectErrorTask,
           chatInput,
           chatMessages,
