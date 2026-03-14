@@ -40,8 +40,17 @@ def generate_plan(project_data: dict):
     except Exception as e:
         logger.error(f"Plandex generate_plan failed: {e}")
 
+    import re
     logger.info("Applying default fallback pipeline sequence.")
-    repo_name = f"owner/{title.lower().replace(' ', '-')}"
+
+    # Safely construct a valid github repository name (alphanumeric and dashes only)
+    # Take only the first line of the title if it contains newlines
+    safe_title = title.split('\n')[0].strip()
+    safe_repo_name = re.sub(r'[^a-zA-Z0-9-]', '', safe_title.lower().replace(' ', '-'))
+    if not safe_repo_name:
+        safe_repo_name = "default-repo"
+
+    repo_name = f"owner/{safe_repo_name}"
     tasks = [
         {"repository_id": repo_name, "tag": "Codebase Adaptation"},
         {"repository_id": repo_name, "tag": "Deployment"},

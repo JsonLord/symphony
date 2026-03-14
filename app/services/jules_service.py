@@ -19,10 +19,14 @@ def create_session(profile_id: str, context: dict):
         "prompt": prompt_text
     }
 
+    import re
     repo_name = context.get("repository_id", "JsonLord/agent-notes")
+    # Ensure no newlines or weird characters crash the Jules payload
+    safe_repo_name = re.sub(r'[^a-zA-Z0-9/-]', '', repo_name.strip().split('\n')[0])
+
     # According to the exact docs: "Requires title, prompt, and sourceContext."
     # The sourceContext string should point to the registered source name for the repo.
-    payload["sourceContext"] = f"sources/github/{repo_name}"
+    payload["sourceContext"] = f"sources/github/{safe_repo_name}"
 
     headers = {
         "Content-Type": "application/json",
