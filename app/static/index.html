@@ -121,11 +121,23 @@
         </div>
       </div>
 
-      <div class="flex">
-        <input type="text" v-model="chatInput" @keyup.enter="sendMessage" placeholder="Type a message..." class="flex-1 border rounded-l-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button @click="sendMessage" :disabled="isStreaming || !chatInput.trim()" class="bg-blue-500 text-white px-4 py-2 rounded-r-md hover:bg-blue-600 disabled:opacity-50">
+      <div class="flex items-center space-x-2 mt-2">
+        <div class="relative flex-1 flex items-center border rounded-md focus-within:ring-2 focus-within:ring-blue-500">
+          <label class="cursor-pointer px-3 text-gray-400 hover:text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+            <input type="file" class="hidden" accept="image/*" @change="onImageSelected">
+          </label>
+          <input type="text" v-model="chatInput" @keyup.enter="sendMessage" placeholder="Type a message..." class="w-full border-none focus:outline-none py-2 pr-4 bg-transparent">
+        </div>
+        <button @click="sendMessage" :disabled="isStreaming || (!chatInput.trim() && !chatImageBase64)" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:opacity-50">
           Send
         </button>
+      </div>
+      <div v-if="chatImageBase64" class="text-xs text-green-600 mt-1 flex items-center">
+        <span>📎 Image attached for OCR analysis</span>
+        <button @click="chatImageBase64 = null" class="ml-2 text-red-500 hover:underline">Remove</button>
       </div>
     </div>
 
@@ -158,6 +170,7 @@
 
         // Chat Refs
         const chatInput = ref('');
+        const chatImageBase64 = ref(null);
         const chatMessages = ref([]);
         const isStreaming = ref(false);
         const currentStreamChunk = ref('');
@@ -193,33 +206,67 @@
           }
         };
 
+        const fileToBase64 = (file) => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+          });
+        };
+
+        const onImageSelected = async (event) => {
+          const file = event.target.files[0];
+          if (file) {
+            chatImageBase64.value = await fileToBase64(file);
+          }
+        };
+
         const createNewProject = async () => {
           const title = prompt("Enter project title:", "New React Migration");
           if (!title) return;
 
-          try {
-            // Create Profile first
-            const profRes = await fetch('/api/v1/settings/profiles', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ profile_name: "Default", parameters: {} })
-            });
-            const { profile_id } = await profRes.json();
-
-            // Create Project
-            const projRes = await fetch('/api/v1/projects/', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ title, description: "Frontend adaptation", profile_id })
-            });
-            const { project_id } = await projRes.json();
-            activeProjectId.value = project_id;
-
-            await loadTasks();
-          } catch (e) {
-            console.error("Failed to create project", e);
-            alert("Error creating project.");
+          let imageBase64 = null;
+          const attachImage = confirm("Would you like to attach an image specification for OCR markdown parsing?");
+          if (attachImage) {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = 'image/*';
+            fileInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if(file) imageBase64 = await fileToBase64(file);
+                submitProject(title, imageBase64);
+            };
+            fileInput.click();
+          } else {
+             submitProject(title, null);
           }
+        };
+
+        const submitProject = async (title, imageBase64) => {
+            try {
+              // Create Profile first
+              const profRes = await fetch('/api/v1/settings/profiles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile_name: "Default", parameters: {} })
+              });
+              const { profile_id } = await profRes.json();
+
+              // Create Project
+              const projRes = await fetch('/api/v1/projects/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description: "Frontend adaptation", profile_id, image_base64: imageBase64 })
+              });
+              const { project_id } = await projRes.json();
+              activeProjectId.value = project_id;
+
+              await loadTasks();
+            } catch (e) {
+              console.error("Failed to create project", e);
+              alert("Error creating project.");
+            }
         };
 
         const injectErrorTask = async () => {
@@ -255,10 +302,19 @@
 
         const sendMessage = async () => {
           const content = chatInput.value.trim();
-          if (!content || isStreaming.value) return;
+          if ((!content && !chatImageBase64.value) || isStreaming.value) return;
 
-          chatMessages.value.push({ role: 'user', content });
+          chatMessages.value.push({ role: 'user', content: content + (chatImageBase64.value ? ' [Image Attached]' : '') });
+
+          const payload = {
+              message: content,
+              forward_to_telegram: telegramForwarding.value,
+              project_id: activeProjectId.value,
+              image_base64: chatImageBase64.value
+          };
+
           chatInput.value = '';
+          chatImageBase64.value = null; // Clear image after caching in payload
           isStreaming.value = true;
           currentStreamChunk.value = '';
           scrollToBottom();
@@ -267,11 +323,7 @@
             const res = await fetch('/api/v1/stream', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                message: content,
-                forward_to_telegram: telegramForwarding.value,
-                project_id: activeProjectId.value
-              })
+              body: JSON.stringify(payload)
             });
 
             if (!res.body) throw new Error("No readable stream");

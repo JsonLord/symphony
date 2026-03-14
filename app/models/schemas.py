@@ -5,6 +5,7 @@ class ProjectCreate(BaseModel):
     title: str
     description: str
     profile_id: str
+    image_base64: Optional[str] = None
 
 class ProjectResponse(BaseModel):
     project_id: str

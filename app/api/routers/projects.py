@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import schemas, domain
-from app.services import llm_service, plandex_service, orchestrator_service, kanboard_service
+from app.services import llm_service, plandex_service, orchestrator_service, kanboard_service, ocr_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,13 +13,19 @@ router = APIRouter()
 def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
     logger.info(f"Creating new project: {project.title}")
 
+    final_description = project.description
+    if project.image_base64:
+        logger.info("Image provided for project creation. Extracting markdown via OCR...")
+        markdown_text = ocr_service.convert_image_to_markdown(project.image_base64)
+        final_description += f"\n\nExtracted Image Content:\n{markdown_text}"
+
     # Sync project to external Kanboard
-    kanboard_res = kanboard_service.sync_project_to_kanboard(project.title, project.description)
+    kanboard_res = kanboard_service.sync_project_to_kanboard(project.title, final_description)
     kanboard_project_id = kanboard_res.get("project_id", 1) if kanboard_res else 1
 
     db_project = domain.Project(
         title=project.title,
-        description=project.description,
+        description=final_description,
         profile_id=project.profile_id,
         status="analyzing"
     )
@@ -29,9 +35,11 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
 
     # Process project
     logger.info("Calling LLM sorting service...")
-    llm_service.sort_project(project.title, project.description)
+    llm_service.sort_project(project.title, final_description)
     logger.info("Calling Plandex to generate project tasks...")
-    plan_response = plandex_service.generate_plan({"title": project.title})
+
+    # Send the title combined with the final description (including OCR text) to plandex
+    plan_response = plandex_service.generate_plan({"title": f"{project.title}\n{final_description}"})
 
     tasks_data = plan_response.get("tasks", [])
     plandex_plan_id = plan_response.get("plandex_plan_id")

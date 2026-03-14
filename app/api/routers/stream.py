@@ -6,6 +6,7 @@ import httpx
 from app.models import stream_schemas, domain
 from app.core.config import settings
 from app.core.database import get_db
+from app.services import ocr_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,13 @@ async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMes
         if db_proj and db_proj.plandex_plan_id:
             plan_id = db_proj.plandex_plan_id
 
+    # Process image if provided
+    final_message = body.message
+    if body.image_base64:
+        logger.info("Image provided in stream request. Extracting markdown via OCR...")
+        markdown_text = ocr_service.convert_image_to_markdown(body.image_base64)
+        final_message += f"\n\nExtracted Image Content:\n{markdown_text}"
+
     async def event_generator():
         full_response = ""
         branch_name = "main"
@@ -57,7 +65,7 @@ async def ideation_stream_handler(request: Request, body: stream_schemas.ChatMes
             logger.info(f"Opening SSE stream to Plandex at {url}")
             async with httpx.AsyncClient() as client:
                 # Based on standard Plandex endpoints, we send the prompt to the tell endpoint
-                async with client.stream("POST", url, headers=headers, json={"prompt": body.message}, timeout=30.0) as response:
+                async with client.stream("POST", url, headers=headers, json={"prompt": final_message}, timeout=30.0) as response:
                     if response.status_code != 200:
                         error_msg = f"Plandex streaming failed with status {response.status_code}"
                         logger.error(error_msg)
